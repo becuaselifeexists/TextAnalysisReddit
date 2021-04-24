@@ -1,0 +1,196 @@
+---
+title: "RedditTextAnalysis"
+author: "Jae Yeon Pyo"
+date: "4/15/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(tidyverse)
+library(quantmod)
+library(plyr)
+library(tidytext)
+library(MASS)
+library(car)
+```
+
+
+# wallstreetbets subReddit Comment Text
+```{r}
+text_data <- read.csv(file = 'reddit_wsb.csv') %>% 
+  as_tibble() %>% 
+  mutate_at(vars(contains("timestamp")), as.Date)
+
+summary(text_data)
+
+reddit_text <- data.frame(text_data)
+summary(reddit_text)
+
+table(reddit_text$body == '')
+```
+
+
+# Accounting Terminology 
+```{r}
+acctg <- c('earnings', 'cash', 'revenue', 'dividend','div', 'buyback', 'p/e', 'pe', 'current report', 'asset', 'eps', 'periodic report', 'cash flow', 'fcf', 'cf', 'inventory', 'expense', 'impair', 'balance sheet', 'analyst', 'accounting', 'leverage', 'control', 'profit', 'book value', 'stock option', 'income', 'guidance', 'fair value', 'liability', 'lease', 'R&D', 'capex', 'audit', 'ebit', 'depreciate', 'gaap', 'financial instrument', 'unusual')
+
+```
+
+
+```{r}
+text_acctg_combined <- data.frame(read.csv(file = 'text_acctg_combined.csv'))
+text_acctg_combined <- mutate(text_acctg_combined, 
+                              rev_change = cq_rev / pq_rev, 
+                              ni_change = cq_rev / pq_rev,  
+                              cash_change = cq_cash / pq_cash, 
+                              ocf_change = cq_ocf / pq_ocf)
+text_acctg_combined
+summary(text_acctg_combined)
+```
+```{r}
+text_acctg_combined_rh50 <- subset(text_acctg_combined, rh50 == 1)
+summary(text_acctg_combined_rh50)
+```
+
+```{r}
+text_acctg_combined_not_rh50 <- subset(text_acctg_combined, rh50 == 0)
+summary(text_acctg_combined_not_rh50)
+```
+
+# Sentiment Analysis
+```{r}
+text_sentiment <- read.csv(file = 'text_sentiment_analysis.csv')
+summary(text_sentiment)
+table(text_sentiment$ticker)
+
+```
+
+
+# Final Ticker List and RH50 Ticker List 
+```{r}
+final_ticker <- read.csv(file = 'final_ticker.csv')
+final_ticker_rh50 <- read.csv(file = 'final_ticker_rh50.csv')
+final_ticker
+final_ticker_rh50
+```
+# Daily Stock Prices by Ticker 
+Consists of open, close, high, low, and price change for each day for each stock 
+```{r}
+daily_stock_price <- data.frame(read.csv(file = 'daily_stock_price.csv'))
+daily_stock_price$price_change <- (daily_stock_price$Close - daily_stock_price$Open) / daily_stock_price$Open
+daily_stock_price
+```
+```{r}
+master <- merge(daily_stock_price, text_sentiment, by.x = c('ticker', 'Date'), by.y=c('ticker', 'date'))
+master
+```
+```{r}
+sa_m = lm(price_change ~  rh50 + positive + negative
+          + compound + happy + angry + surprise + sad + fear, data = master)
+
+#neutral removed due to multicollinearity issue
+
+summary(sa_m)
+
+```
+```{r}
+plot(sa_m)
+```
+```{r}
+vif(sa_m)
+```
+
+
+```{r}
+master_rh50 <- subset(master, rh50 == 1)
+master_not_rh50 <- subset(master, rh50 ==0)
+
+```
+
+```{r}
+sa_m_rh50 = lm(price_change ~  positive + negative + neutral
+          + compound + happy + angry + surprise + sad + fear, data = master_rh50)
+sa_m_not_rh50 = lm(price_change ~  positive + negative + neutral
+          + compound + happy + angry + surprise + sad + fear, data = master_not_rh50)
+```
+
+```{r}
+summary(sa_m_rh50)
+plot(sa_m_rh50)
+```
+
+```{r}
+summary(sa_m_not_rh50)
+plot(sa_m_not_rh50)
+```
+
+
+```{r}
+#for (pkg in c("rvest","httr","dplyr","stringr","XML","RCurl","ggplot2","reshape","tm","ggmap")){
+# if (!pkg %in% rownames(installed.packages())){install.packages(pkg)}
+#}
+
+ticker_list <- c("LULU")
+yahoo_url <- "https://finance.yahoo.com/quote/LULU/analysis?p=LULU&.tsrc=fin-srch"
+url_file <- GET(yahoo_url)
+web_page_parsed <- htmlParse(url_file, encoding = "UTF-8")
+tables <- readHTMLTable(web_page_parsed)
+print(head(tables))
+```
+
+
+```{r}
+
+reddit_text_only <- c(reddit_text[['body']])
+
+reddit_text_only %>%
+  unnest_tokens(word, reddit_text_only)
+
+```
+
+
+```{r}
+tidy_hgwells %>%
+  count(word, sort = TRUE)
+```
+
+
+```{r cars}
+
+
+what_metrics <- yahooQF(c("Earnings Per Share USD",
+                          "Price/Sales", 
+                          "Diluted EPS",
+                          "P/E Ratio",
+                          "Price/EPS Estimate Next Year",
+                          "PEG Ratio",
+                          "Dividend Yield", 
+                          "Market Capitalization"))
+
+Symbols<-c("XOM","MSFT","JNJ","GE","CVX","WFC","PG","JPM","VZ","PFE","T","IBM","MRK","BAC","DIS","ORCL","PM","INTC","SLB")
+
+
+metrics <- getQuote(paste(Symbols, sep="", collapse=";"), what=what_metrics)
+
+metrics
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
